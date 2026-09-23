@@ -3,6 +3,10 @@ name: Production-Grade CI/CD Pipeline
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+        - 'k8s/**'
+        - '**.md'
+        - '.gitignore'
 
 jobs:
   build-scan-deploy:
