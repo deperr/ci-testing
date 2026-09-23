@@ -8,7 +8,7 @@ jobs:
   build-scan-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # Grants permission to commit updated k8s/deployment.yaml back to Git
+      contents: write   # Grants permission to commit updated k8s/deployment.yml back to Git
       packages: write   # Grants permission to push container images to ghcr.io
 
     steps:
@@ -16,18 +16,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-    # Set up QEMU for multi-architecture builds (AMD64 & ARM64)
+      # 2. Set up QEMU for multi-architecture emulation (AMD64 & ARM64)
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
+      # 3. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 2. Set up Buildx for layer caching and local image loading
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # 3. Authenticate with GitHub Container Registry
+      # 4. Authenticate with GitHub Container Registry
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -35,7 +32,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 4. Extract Git metadata for Docker tags (short SHA and 'latest')
+      # 5. Extract Git metadata for Docker tags (generates sha-<SHORT_SHA> and 'latest')
       - name: Extract Docker Metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -45,15 +42,15 @@ jobs:
             type=sha,format=short
             type=raw,value=latest
 
-      # 5. Build the image locally (Gated before registry push)
-      - name: Build Image Locally
+      # 6. Build single-architecture image locally for fast security scanning
+      - name: Build Image Locally for Scanning
         uses: docker/build-push-action@v5
         with:
           context: .
           load: true
           tags: local-image:test
 
-      # 6. Security Scan with Trivy (Aborts workflow if CRITICAL/HIGH vulnerabilities exist)
+      # 7. Security Scan with Trivy (Aborts workflow if CRITICAL/HIGH vulnerabilities exist)
       - name: Scan Image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -63,8 +60,8 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-    # 7. Push multi-arch image to GHCR after Trivy
-      - name: Push Image to GHCR
+      # 8. Push Multi-Arch Image (AMD64 + ARM64) to GHCR (Executes only if Trivy scan succeeds)
+      - name: Push Multi-Arch Image to GHCR
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -75,18 +72,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 8. Update image tag in k8s/deployment.yml with prefix
+      # 9. Update image tag in k8s/deployment.yml (matches sha-<SHORT_SHA> format)
       - name: Update Image Tag in Manifest
         run: |
           SHORT_SHA=${{ github.sha }}
           SHORT_SHA=${SHORT_SHA:0:7}
           sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:sha-${SHORT_SHA}|g" k8s/deployment.yml
 
-      # 9. Commit and push manifest update back to main branch (with [skip ci] to prevent infinite loops)
+      # 10. Commit and push manifest update back to main branch ([skip ci] prevents infinite loops)
       - name: Commit and Push Updated Manifest
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add k8s/deployment.yml
-          git commit -m "chore(cd): update image tag to ${{ github.sha }} [skip ci]" || echo "No changes to commit"
+          git commit -m "chore(cd): update image tag to sha-${SHORT_SHA} [skip ci]" || echo "No changes to commit"
           git push
