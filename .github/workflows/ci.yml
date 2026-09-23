@@ -1,23 +1,26 @@
-name: Build, Scan, and Push Image
+name: Production-Grade CI/CD Pipeline
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  build-scan-push:
+  build-scan-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: write   # Grants permission to commit updated k8s/deployment.yaml back to Git
+      packages: write   # Grants permission to push container images to ghcr.io
 
     steps:
+      # 1. Checkout repository code
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2. Set up Buildx for layer caching and local image loading
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # 3. Authenticate with GitHub Container Registry
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -25,6 +28,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 4. Extract Git metadata for Docker tags (short SHA and 'latest')
       - name: Extract Docker Metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -34,25 +38,25 @@ jobs:
             type=sha,format=short
             type=raw,value=latest
 
-      # Step 1: Build the image locally (don't push yet)
+      # 5. Build the image locally (Gated before registry push)
       - name: Build Image Locally
         uses: docker/build-push-action@v5
         with:
           context: .
-          load: true # Loads the image into the local Docker daemon for scanning
+          load: true
           tags: local-image:test
 
-      # Step 2: Scan local image with Trivy
+      # 6. Security Scan with Trivy (Aborts workflow if CRITICAL/HIGH vulnerabilities exist)
       - name: Scan Image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'local-image:test'
           format: 'table'
-          exit-code: '1' # Fails the pipeline if vulnerabilities are found
+          exit-code: '1'
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-      # Step 3: Push to Registry ONLY if Trivy passes
+      # 7. Push image to GHCR (Only executes if Trivy scan succeeds)
       - name: Push Image to GHCR
         uses: docker/build-push-action@v5
         with:
@@ -62,3 +66,19 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 8. Update image tag in k8s/deployment.yaml
+      - name: Update Image Tag in Manifest
+        run: |
+          SHORT_SHA=${{ github.sha }}
+          SHORT_SHA=${SHORT_SHA:0:7}
+          sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:${SHORT_SHA}|g" k8s/deployment.yaml
+
+      # 9. Commit and push manifest update back to main branch (with [skip ci] to prevent infinite loops)
+      - name: Commit and Push Updated Manifest
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/deployment.yaml
+          git commit -m "chore(cd): update image tag to ${{ github.sha }} [skip ci]" || echo "No changes to commit"
+          git push
