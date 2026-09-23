@@ -67,12 +67,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 8. Update image tag in k8s/deployment.yml
+      # 8. Update image tag in k8s/deployment.yml with sha- prefix
       - name: Update Image Tag in Manifest
         run: |
           SHORT_SHA=${{ github.sha }}
           SHORT_SHA=${SHORT_SHA:0:7}
-          sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:${SHORT_SHA}|g" k8s/deployment.yml
+          sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:sha-${SHORT_SHA}|g" k8s/deployment.yml
 
       # 9. Commit and push manifest update back to main branch (with [skip ci] to prevent infinite loops)
       - name: Commit and Push Updated Manifest
