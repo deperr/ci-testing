@@ -67,7 +67,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 8. Update image tag in k8s/deployment.yml with sha- prefix
+      # 8. Update image tag in k8s/deployment.yml with prefix
       - name: Update Image Tag in Manifest
         run: |
           SHORT_SHA=${{ github.sha }}
