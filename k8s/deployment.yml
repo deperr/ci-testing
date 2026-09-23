@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: my-app
-        image: ghcr.io/deperr/ci-testing:sha-925ad16
+        image: ghcr.io/deperr/ci-testing:sha-0ac9f11
         ports:
         - containerPort: 80
