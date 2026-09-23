@@ -63,7 +63,7 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-    # 7. Push multi-arch image to GHCR
+    # 7. Push multi-arch image to GHCR after Trivy
       - name: Push Image to GHCR
         uses: docker/build-push-action@v5
         with:
